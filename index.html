@@ -428,6 +428,11 @@ details.drv[open] summary::before{content:"\2212"}
 #landing.leaving{opacity:0;pointer-events:none}
 body.intro{overflow:hidden}
 #landing .cta-row .btn{font-size:1rem}
+#landing #L_results{position:relative;overflow:hidden}
+#landing #L_results::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;background:#D4F53C;transform:scaleX(0);transform-origin:left}
+#landing #L_results.auto::after{animation:fillbar 5s linear forwards}
+#landing .count{margin:12px 0 0;min-height:1.3em;font-size:.88rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+@keyframes fillbar{to{transform:scaleX(1)}}
 #landing .linkbtn{font:inherit;font-size:.85rem;background:none;border:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;cursor:pointer;margin-top:12px}
 
 </style>
@@ -488,6 +493,9 @@ body.intro{overflow:hidden}
     <p id="L_ctaText">Your full Commercial Outlook, fan dashboard, campaign briefs, audience story and sponsorship case are ready.</p>
     <div class="cta-row">
       <button class="btn btn-primary" id="L_results" type="button">See full results</button>
+    </div>
+    <p class="count" id="L_count" aria-live="polite"></p>
+    <div>
     </div>
     <button class="linkbtn" id="L_replay" type="button">Watch again</button>
     <div class="credit">Built by <a href="https://www.linkedin.com/in/kush-savant-1894a1307" target="_blank" rel="noopener">Kush Savant</a>, MSc Sports Analytics, Loughborough University London</div>
@@ -1526,7 +1534,7 @@ drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") 
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) handle(f); });
 input.addEventListener("change", () => { if (input.files[0]) handle(input.files[0]); });
-$("change").addEventListener("click", () => { input.value = ""; input.click(); });
+$("change").addEventListener("click", () => { clearTimeout(autoT); input.value = ""; input.click(); });
 
 function handle(file) {
   if (!/\.csv$/i.test(file.name) && file.type !== "text/csv") return showError("That file isn't a CSV. Export your CRM as .csv and try again.");
@@ -1540,7 +1548,7 @@ function showError(text) {
   const m = $("msg"); m.className = "msg on"; m.textContent = text;
   if (!$("summary").classList.contains("on")) { $("summary").classList.add("on"); drop.hidden = true; $("table").innerHTML = ""; $("score").disabled = true; }
 }
-let current = null;
+let current = null, autoT = 0, scoring = false;
 function show(name, size, headers, rows) {
   current = { name, headers, rows };
   drop.hidden = true; $("actions").hidden = true;
@@ -1562,7 +1570,7 @@ function show(name, size, headers, rows) {
     const missing = CORE8.filter(c => !map[c]);
     m.className = "msg on"; m.textContent = `FanIQ matched ${core.length} of the 8 core columns and needs at least 5. Add or rename some of these: ${missing.join(", ")}.`;
     $("score").disabled = true;
-  } else { m.className = "msg"; $("score").disabled = false; }
+  } else { m.className = "msg"; $("score").disabled = false; clearTimeout(autoT); autoT = setTimeout(() => { if (!$("viewUpload").hidden && current && current.rows === rows) $("score").click(); }, reduce ? 0 : 900); }
   $("s1").className = "done"; $("s2").className = "on"; $("s3").className = "";
 }
 function countUp(el, to, d = 900, f = fmt) {
@@ -1580,6 +1588,7 @@ renderCols(null);
 
 /* ================= analyse ================= */
 $("score").addEventListener("click", async () => {
+  if (scoring) return; scoring = true; clearTimeout(autoT);
   const ov = $("analysing"), li = [...$("aSteps").children];
   li.forEach(l => l.classList.remove("on")); ov.hidden = false;
   const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
@@ -1587,7 +1596,7 @@ $("score").addEventListener("click", async () => {
   await wait(350);
   const result = FanIQ.run(current.headers, current.rows);
   li[1].classList.add("on"); await wait(380); li[2].classList.add("on"); await wait(380); li[3].classList.add("on"); await wait(380);
-  ov.hidden = true;
+  ov.hidden = true; scoring = false;
   if (result.enough && result.outlook && window.THREE) Landing.start(result, current.name, () => showResults(result)); else showResults(result);
 });
 $("newUpload").addEventListener("click", () => {
@@ -2277,7 +2286,7 @@ function setPointSize(k) { mat.uniforms.uSize.value = Math.min(spacing, 1.5) * .
 let sphereR = 10, sphereC = new THREE.Vector3(), spin = 0;
 function sphereLayout() {
   const top = tagEl.getBoundingClientRect().bottom + 18;
-  const bottom = ctaEl.getBoundingClientRect().top - 14;
+  const bottom = ctaEl.getBoundingClientRect().top - 44;
   const rpx = Math.max(40, Math.min((bottom - top) / 2, W * .26, 190));
   sphereR = rpx / H * visH();
   sphereC.set(0, wy((top + bottom) / 2 / H), 0);
@@ -2343,6 +2352,7 @@ function sphereTargets(dt) {
 function assignSphereIdx() { let k = 0; for (let i = 0; i < N; i++) if (grp[i] >= 100) sphIdx[i] = k++; }
 
 function reset() {
+  const rb = document.getElementById("L_results"); if (rb) rb.classList.remove("auto"); const lc = document.getElementById("L_count"); if (lc) lc.textContent = "";
   timers.forEach(clearTimeout); timers = []; tw = null; phase = "intro"; spin = 0;
   copyEl.classList.remove("on"); ringEl.classList.remove("on"); ctaEl.classList.remove("on");
   crm.classList.remove("on", "out"); sides.forEach(s => s.classList.remove("on"));
@@ -2372,7 +2382,9 @@ function run() {
   });
   at(15900, () => ringEl.classList.add("on"));
   at(16300, () => sides.forEach(s => s.classList.add("on")));
-  at(17600, () => { ctaEl.classList.add("on"); skipBtn.hidden = true; });
+  at(17600, () => { ctaEl.classList.add("on"); skipBtn.hidden = true; $("L_results").classList.add("auto"); });
+  for (let k = 0; k < 5; k++) at(17600 + k * 1000, () => { $("L_count").textContent = `Opening your full results in ${5 - k}`; });
+  at(17600 + 5000, () => { if (alive) finish(); });
   at(END, () => { running = false; });
 }
 
