@@ -433,7 +433,7 @@ body.intro{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="landing" aria-label="FanIQ introduction">
+<div id="landing" hidden aria-label="FanIQ results reveal">
 <main class="stage" id="L_stage">
   <canvas id="L_c" aria-hidden="true"></canvas>
   <header class="hud">
@@ -441,11 +441,11 @@ body.intro{overflow:hidden}
       <svg viewBox="0 0 16 22" aria-hidden="true"><path d="M10 0 0 13h6l-2 9L16 8h-6z" fill="#FF7A1A"/></svg>
       FanIQ
     </a>
-    <button class="ghost-btn" id="L_skip" type="button">Skip intro</button>
+    <button class="ghost-btn" id="L_skip" type="button">Skip to results</button>
   </header>
 
   <div class="panel" id="L_crm" aria-hidden="true">
-    <h3><i></i>CRM overview</h3>
+    <h3><i></i><span id="L_file">CRM overview</span></h3>
     <div class="big" id="L_crmNum">0</div>
     <div class="lbl">Fan records</div>
     <svg viewBox="0 0 320 46" preserveAspectRatio="none">
@@ -454,7 +454,7 @@ body.intro{overflow:hidden}
     </svg>
     <div class="tiles">
       <div class="tile"><b id="L_fields">11</b><span>Data fields</span></div>
-      <div class="tile"><b>5</b><span>Segments</span></div>
+      <div class="tile"><b id="L_matched">0</b><span>FanIQ matches</span></div>
       <div class="tile"><b>Today</b><span>Last sync</span></div>
     </div>
   </div>
@@ -478,17 +478,16 @@ body.intro{overflow:hidden}
     <div class="bar"><div class="row"><span>Membership proximity</span><b>15%</b></div><div class="track"><div class="fill" style="--w:.429"></div></div></div>
   </div>
   <div class="panel side" id="L_signals" aria-hidden="true">
-    <h3><i></i>What the data showed</h3>
-    <div class="sig"><em>1</em><span>Article reading is the strongest predictor of a purchase.</span></div>
-    <div class="sig"><em>2</em><span>App clickers spend more than email clickers.</span></div>
-    <div class="sig"><em>3</em><span>A ghost audience sits inside every fan base.</span></div>
+    <h3><i></i>What FanIQ found</h3>
+    <div class="sig"><em>1</em><span id="L_f1"></span></div>
+    <div class="sig"><em>2</em><span id="L_f2"></span></div>
+    <div class="sig"><em>3</em><span id="L_f3"></span></div>
   </div>
 
   <section class="cta" id="L_cta">
-    <p>FanIQ scores every supporter in your CRM on commercial readiness, so you know who to sell to first.</p>
+    <p id="L_ctaText">Your full Commercial Outlook, fan dashboard, campaign briefs, audience story and sponsorship case are ready.</p>
     <div class="cta-row">
-      <button class="btn btn-primary" id="L_demo" type="button">See it on sample data</button>
-      <button class="btn btn-secondary" id="L_upload" type="button">Upload your fans</button>
+      <button class="btn btn-primary" id="L_results" type="button">See full results</button>
     </div>
     <button class="linkbtn" id="L_replay" type="button">Watch again</button>
     <div class="credit">Built by <a href="https://www.linkedin.com/in/kush-savant-1894a1307" target="_blank" rel="noopener">Kush Savant</a>, MSc Sports Analytics, Loughborough University London</div>
@@ -1589,14 +1588,14 @@ $("score").addEventListener("click", async () => {
   const result = FanIQ.run(current.headers, current.rows);
   li[1].classList.add("on"); await wait(380); li[2].classList.add("on"); await wait(380); li[3].classList.add("on"); await wait(380);
   ov.hidden = true;
-  showResults(result);
+  if (result.enough && result.outlook && window.THREE) Landing.start(result, current.name, () => showResults(result)); else showResults(result);
 });
 $("newUpload").addEventListener("click", () => {
   $("viewResults").hidden = true; $("viewUpload").hidden = false; stopViz();
   $("summary").classList.remove("on"); drop.hidden = false; $("actions").hidden = false; input.value = ""; renderCols(null);
   $("s1").className = "on"; $("s2").className = ""; $("s3").className = ""; scrollTo(0, 0);
 });
-$("home").addEventListener("click", e => { e.preventDefault(); stopViz(); Landing.start(); });
+$("home").addEventListener("click", e => { e.preventDefault(); if (Landing.alive) Landing.stop(); if (!$("viewResults").hidden) $("newUpload").click(); });
 const App = {
   upload() { if (!$("viewResults").hidden) $("newUpload").click(); scrollTo(0, 0); },
   demo() { $("newUpload").click(); $("sample").click(); setTimeout(() => $("score").click(), 450); }
@@ -2223,8 +2222,8 @@ const visW = () => visH() * W / H;
 const wy = f => (0.5 - f) * visH();
 
 function initGL() {
-  try { renderer = new THREE.WebGLRenderer({ canvas: $("L_c"), antialias: true, alpha: true }); }
-  catch (e) { glOK = false; return; }
+  if (!renderer) { try { renderer = new THREE.WebGLRenderer({ canvas: $("L_c"), antialias: true, alpha: true }); } catch (e) { glOK = false; return; } }
+  if (geo) { geo.dispose(); mat.dispose(); }
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(FOV, 1, 1, 1000);
   pos = new Float32Array(N * 3); tgt = new Float32Array(N * 3);
@@ -2393,7 +2392,7 @@ function skip() {
 
 /* ================= pointer parallax ================= */
 const ptr = { x: 0, y: 0, sx: 0, sy: 0 };
-addEventListener("pointermove", e => { ptr.x = e.clientX / W * 2 - 1; ptr.y = e.clientY / H * 2 - 1; });
+addEventListener("pointermove", e => { ptr.x = e.clientX / innerWidth * 2 - 1; ptr.y = e.clientY / innerHeight * 2 - 1; });
 
 /* ================= loop ================= */
 let last = performance.now();
@@ -2437,42 +2436,51 @@ function resize() {
 }
 
 
-function configure() {
-  const R = FanIQ.run(SAMPLE.headers, SAMPLE.rows), b = R.outlook.fcrs.bands;
+function configure(R, name) {
+  const b = R.outlook.fcrs.bands, O = R.outlook;
   CFG = { total: R.D.n, per: Math.max(1, Math.ceil(R.D.n / 4000)), steps: [
     { n: b.Passive, line: "Some barely engage with anything the club sends.", tag: "Passive, FCRS under 40" },
     { n: b.Building, line: "Some are warming up, but aren't ready yet.", tag: "Building, FCRS 40 to 69" }
   ].filter(s => s.n > 0) };
   ready = b["Conversion Ready"];
   N = Math.round(CFG.total / CFG.per); sphIdx = new Int32Array(N);
-  $("L_fields").textContent = SAMPLE.headers.length;
+  $("L_fields").textContent = R.D.headers.length;
+  $("L_matched").textContent = Object.keys(R.D.mapping).length + "/11";
+  $("L_file").textContent = name || "CRM overview";
+  const g = v => "£" + FanIQ.pyRound(v).toLocaleString("en-GB");
+  $("L_f1").textContent = `+${g(O.combined)} upside across ${O.priority.length} priority opportunities.`;
+  $("L_f2").textContent = `Biggest opportunity: ${O.biggest.segment}, worth +${g(O.biggest.est_revenue)}.`;
+  $("L_f3").textContent = `Biggest risk: ${O.risk.segment}, with ${g(O.risk.value)} of value at risk.`;
 }
-function start() {
+let onDone = null;
+function start(R, name, done) {
+  onDone = done;
   document.body.classList.add("intro");
   const el = document.getElementById("landing"); el.hidden = false; el.classList.remove("leaving");
+  configure(R, name);
+  if (glOK) initGL();
+  readColors();
   if (!booted) {
-    configure();
-    if (glOK) initGL();
-    readColors();
     addEventListener("resize", () => { if (alive) resize(); });
-    skipBtn.addEventListener("click", skip);
+    skipBtn.addEventListener("click", finish);
     $("L_replay").addEventListener("click", run);
-    $("L_demo").addEventListener("click", () => { stop(); App.demo(); });
-    $("L_upload").addEventListener("click", () => { stop(); App.upload(); });
+    $("L_results").addEventListener("click", finish);
     booted = true;
   }
+  if (!isFinite(ptr.sx) || !isFinite(ptr.sy)) { ptr.sx = ptr.sy = ptr.x = ptr.y = 0; }
   alive = true; resize(); requestAnimationFrame(frame); run();
 }
+function finish() { stop(); if (onDone) { const f = onDone; onDone = null; f(); } }
 function stop() {
   alive = false; timers.forEach(clearTimeout); timers = []; running = false;
   const el = document.getElementById("landing"); el.classList.add("leaving");
   document.body.classList.remove("intro");
   setTimeout(() => { if (!alive) el.hidden = true; }, 520);
 }
-return { start, stop };
+return { start, stop, get alive() { return alive; } };
 })();
 
-if (location.hash === "#demo") App.demo(); else if (location.hash === "#upload") App.upload(); else Landing.start();
+if (location.hash === "#demo") App.demo();
 </script>
 </body>
 </html>
