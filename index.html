@@ -105,6 +105,20 @@ aside.cols .sub{margin:0 0 12px;font-size:.85rem;color:var(--muted)}
 .col b em{font-style:normal;font-size:.7rem;font-weight:700;color:var(--blue);margin-left:6px}
 .col span{font-size:.8rem;color:var(--muted)}
 .col .as{display:block;margin-top:2px;font-size:.74rem;color:var(--lime);font-weight:650}
+.col .cbody{flex:1;min-width:0}
+.col .pick{display:block;margin-top:6px}
+.col .pick select{width:100%;max-width:260px;font:inherit;font-size:.8rem;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.8);color:var(--ink);cursor:pointer}
+.col.miss .pick select{border-color:rgba(201,58,58,.35)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.msg.info{background:var(--blue-soft,rgba(47,111,219,.1));color:var(--ink);border-color:transparent}
+#rmeta .sep{color:var(--faint);margin:0 4px}
+#rmeta .mapd{display:inline-block;margin-left:8px}
+#rmeta .mapd summary{display:inline;cursor:pointer;color:var(--blue);font-weight:650;list-style:none}
+#rmeta .mapd summary::-webkit-details-marker{display:none}
+#rmeta .mapd[open]{display:block;margin:8px 0 0}
+#rmeta .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-width:820px}
+#rmeta .chip{font-size:.76rem;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.75);border:1px solid var(--line)}
+#rmeta .chip i{font-style:normal;color:var(--muted)}
 .copyrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 0;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)}
 .copyrow button{font:inherit;font-size:.82rem;font-weight:700;background:none;border:0;color:var(--ink);cursor:pointer;padding:4px 0;text-decoration:underline;text-underline-offset:3px}
 
@@ -126,6 +140,12 @@ aside.cols .sub{margin:0 0 12px;font-size:.85rem;color:var(--muted)}
 .tabs::-webkit-scrollbar{display:none}
 .tab{font:inherit;font-size:.9rem;font-weight:650;white-space:nowrap;border:0;background:none;color:var(--muted);padding:10px 16px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:8px}
 .tab.on{background:var(--ink);color:#fff}
+.tab .ts{display:none}
+@media (max-width:640px){
+  .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;border-radius:20px;overflow:visible}
+  .tab{justify-content:center;padding:9px 6px;font-size:.84rem}
+  .tab .tl{display:none}.tab .ts{display:inline}
+}
 .tab[disabled]{cursor:default;opacity:.55}
 .tab small{font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--line)}
 
@@ -577,11 +597,11 @@ body.intro{overflow:hidden}
     <button class="btn btn-ghost btn-sm" id="newUpload" type="button">New upload</button>
   </div>
   <nav class="tabs" aria-label="Sections">
-    <button class="tab on" type="button" data-tab="outlook">Commercial Outlook</button>
-    <button class="tab" type="button" data-tab="dashboard">Fan Dashboard</button>
-    <button class="tab" type="button" data-tab="campaign">Campaign Intelligence</button>
-    <button class="tab" type="button" data-tab="story">Audience Story</button>
-    <button class="tab" type="button" data-tab="sponsor">Sponsorship Intelligence</button>
+    <button class="tab on" type="button" data-tab="outlook"><span class="tl">Commercial Outlook</span><span class="ts">Outlook</span></button>
+    <button class="tab" type="button" data-tab="dashboard"><span class="tl">Fan Dashboard</span><span class="ts">Fans</span></button>
+    <button class="tab" type="button" data-tab="campaign"><span class="tl">Campaign Intelligence</span><span class="ts">Campaigns</span></button>
+    <button class="tab" type="button" data-tab="story"><span class="tl">Audience Story</span><span class="ts">Story</span></button>
+    <button class="tab" type="button" data-tab="sponsor"><span class="tl">Sponsorship Intelligence</span><span class="ts">Sponsors</span></button>
   </nav>
   <div id="outlook"></div>
 </div>
@@ -624,16 +644,16 @@ const FanIQ = (() => {
     Favourite_Player: "Optional context"
   };
   const COLUMN_ALIASES = {
-    Fan_ID: ["fan_id", "id", "fan id", "customer_id", "member_id", "supporter_id", "fanid"],
+    Fan_ID: ["fan_id", "id", "fan id", "customer_id", "member_id", "supporter_id", "fanid", "supporter_ref", "supporter_number", "customer_ref", "account_id", "urn"],
     Age: ["age", "age_years", "years", "dob", "date_of_birth"],
     Gender: ["gender", "sex", "gender_identity"],
-    Last_Attended: ["last_attended", "last_visit", "last_match", "last_game", "last_event", "last attendance"],
-    Tickets_Purchased: ["tickets_purchased", "tickets", "ticket_count", "num_tickets", "tickets purchased"],
+    Last_Attended: ["last_attended", "last_visit", "last_match", "last_game", "last_event", "last attendance", "last_visit_date", "last_attended_date", "last_match_date"],
+    Tickets_Purchased: ["tickets_purchased", "tickets", "ticket_count", "num_tickets", "tickets purchased", "tix", "tix_bought", "tickets_bought", "matches_attended", "games_attended"],
     Spend: ["spend", "total_spend", "revenue", "total_revenue", "amount", "spend_total"],
     Membership_Type: ["membership_type", "membership", "tier", "member_tier", "membership type"],
     Engagement_Score: ["engagement_score", "engagement", "eng_score", "engagement score"],
     Channel_Preference: ["channel_preference", "channel", "preferred_channel", "comms_channel"],
-    Country: ["country", "nation", "region", "location", "nationality"],
+    Country: ["country", "nation", "region", "location", "nationality", "country_of_residence"],
     Favourite_Player: ["favourite_player", "favorite_player", "fav_player", "player", "preferred_player"]
   };
   const MATCHED_CORE = ["Fan_ID", "Age", "Gender", "Last_Attended", "Tickets_Purchased", "Spend", "Membership_Type", "Engagement_Score"];
@@ -680,15 +700,23 @@ const FanIQ = (() => {
   const ratio = (a, b) => (a.length + b.length) ? 200 * lcs(a, b) / (a.length + b.length) : 100;
   function mapColumns(headers) {
     const lower = {}; headers.forEach(c => { lower[c.toLowerCase().trim().replace(/ /g, "_")] = c; });
-    const mapping = {};
+    const mapping = {}, used = new Set();
+    // Pass 1: exact alias hits. Pass 2: fuzzy guesses, never reusing a column
+    // an exact hit already claimed (stops "Member Tier" landing on Fan_ID too).
     for (const [canon, aliases] of Object.entries(COLUMN_ALIASES)) {
+      for (const alias of aliases) {
+        const an = alias.toLowerCase().replace(/ /g, "_");
+        if (an in lower && !used.has(lower[an])) { mapping[canon] = lower[an]; used.add(lower[an]); break; }
+      }
+    }
+    for (const [canon, aliases] of Object.entries(COLUMN_ALIASES)) {
+      if (mapping[canon]) continue;
       let best = null, bestScore = 0;
       for (const alias of aliases) {
         const an = alias.toLowerCase().replace(/ /g, "_");
-        if (an in lower) { best = lower[an]; bestScore = 100; break; }
-        for (const [cn, orig] of Object.entries(lower)) { const sc = ratio(an, cn); if (sc > bestScore && sc >= 75) { bestScore = sc; best = orig; } }
+        for (const [cn, orig] of Object.entries(lower)) { if (used.has(orig)) continue; const sc = ratio(an, cn); if (sc > bestScore && sc >= 75) { bestScore = sc; best = orig; } }
       }
-      if (best) mapping[canon] = best;
+      if (best) { mapping[canon] = best; used.add(best); }
     }
     return mapping;
   }
@@ -1185,8 +1213,8 @@ const FanIQ = (() => {
     return { pitch, female, core, topMarket: countries ? countries[0][0] : "N/A", avgComm, gender, countries: countries ? countries.slice(0, 8) : null, quality, categories: SPONSOR_CATEGORIES, hasGender: has("Gender"), hasAge: !!ages };
   }
 
-  function run(headers, rows) {
-    const mapping = mapColumns(headers);
+  function run(headers, rows, confirmed) {
+    const mapping = confirmed ? { ...confirmed } : mapColumns(headers);
     const D = remap(headers, rows, mapping);
     const matchedCore = MATCHED_CORE.filter(c => c in D.cols);
     D.mapping = mapping; D.matchedCore = matchedCore;
@@ -1519,13 +1547,25 @@ const CORE8 = ["Fan_ID", "Age", "Gender", "Last_Attended", "Tickets_Purchased", 
 
 /* ================= upload ================= */
 const tick = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-function renderCols(map) {
+function renderCols(map, headers) {
   $("colList").innerHTML = Object.entries(FanIQ.CORE_COLUMNS).map(([key, unlocks]) => {
     const m = map ? map[key] : null, cls = map ? (m ? "hit" : "miss") : "";
-    return `<div class="col ${cls}"><div class="dot">${tick}</div><div>
-      <b>${key}${CORE8.includes(key) ? '<em>Core</em>' : ''}</b><span>${unlocks}</span>
-      ${m && m !== key ? `<span class="as">Matched to your column "${esc(m)}"</span>` : ''}</div></div>`;
+    const pick = headers ? `<label class="pick"><span class="sr">Your column for ${key}</span><select data-key="${key}">
+        <option value="">Not in my file</option>
+        ${headers.map(h => `<option value="${esc(h)}"${h === m ? " selected" : ""}>${esc(h)}</option>`).join("")}
+      </select></label>` : "";
+    return `<div class="col ${cls}"><div class="dot">${tick}</div><div class="cbody">
+      <b>${key}${CORE8.includes(key) ? '<em>Core</em>' : ''}</b><span>${unlocks}</span>${pick}</div></div>`;
   }).join("");
+  if (headers) $("colList").querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => {
+    clearTimeout(autoT);
+    const key = sel.dataset.key, val = sel.value;
+    // One file column can feed only one FanIQ column.
+    if (val) for (const k of Object.keys(current.map)) if (k !== key && current.map[k] === val) delete current.map[k];
+    if (val) current.map[key] = val; else delete current.map[key];
+    current.edited = true;
+    evaluate(false);
+  }));
 }
 const drop = $("drop"), input = $("file");
 drop.addEventListener("click", () => input.click());
@@ -1555,23 +1595,43 @@ function show(name, size, headers, rows) {
   const s = $("summary"); s.classList.remove("on"); void s.offsetWidth; s.classList.add("on");
   $("fname").textContent = name;
   $("fsize").textContent = size ? (size / 1048576 < 1 ? Math.max(1, Math.round(size / 1024)) + " KB" : (size / 1048576).toFixed(1) + " MB") : "Sample data, 300 fans";
-  const map = FanIQ.mapColumns(headers), hits = Object.keys(map).length;
-  current.map = map;
+  current.map = FanIQ.mapColumns(headers); current.edited = false;
   countUp($("rows"), rows.length); countUp($("cols"), headers.length);
+  $("goNote").textContent = headers.length > 12 ? `Showing 5 rows and the first 12 of ${headers.length} columns.` : "Preview shows the first 5 rows.";
+  renderCols(current.map, headers);
+  evaluate(true);
+  $("s1").className = "done"; $("s2").className = "on"; $("s3").className = "";
+}
+// Re-checks the mapping. Runs on upload and every time a dropdown changes.
+function evaluate(fresh) {
+  const { headers, rows, map } = current;
+  const hits = Object.keys(map).length;
   $("feat").textContent = hits + "/" + Object.keys(FanIQ.CORE_COLUMNS).length;
   const mapped = new Set(Object.values(map)), head = headers.slice(0, 12);
   $("table").innerHTML = "<thead><tr>" + head.map(h => `<th class="${mapped.has(h) ? "hit" : ""}">${esc(h)}</th>`).join("") + "</tr></thead><tbody>" +
     rows.slice(0, 5).map(r => "<tr>" + head.map(h => `<td>${esc(r[h] ?? "")}</td>`).join("") + "</tr>").join("") + "</tbody>";
-  $("goNote").textContent = headers.length > 12 ? `Showing 5 rows and the first 12 of ${headers.length} columns.` : "Preview shows the first 5 rows.";
-  renderCols(map);
+  if (!fresh) $("colList").querySelectorAll(".col").forEach((el, i) => {
+    const key = Object.keys(FanIQ.CORE_COLUMNS)[i]; el.classList.toggle("hit", !!map[key]); el.classList.toggle("miss", !map[key]);
+  });
   const core = CORE8.filter(c => map[c]), m = $("msg");
+  // Guessed matches (column name differs from FanIQ's) are shown for a check
+  // instead of auto-scoring, so a wrong guess never silently skews the results.
+  const guessed = Object.entries(map).filter(([k, v]) => k.toLowerCase() !== v.toLowerCase().trim().replace(/ /g, "_"));
+  clearTimeout(autoT);
   if (!rows.length) { m.className = "msg on"; m.textContent = "That file has headers but no fans in it."; $("score").disabled = true; }
   else if (core.length < 5) {
     const missing = CORE8.filter(c => !map[c]);
-    m.className = "msg on"; m.textContent = `FanIQ matched ${core.length} of the 8 core columns and needs at least 5. Add or rename some of these: ${missing.join(", ")}.`;
+    m.className = "msg on"; m.textContent = `FanIQ has ${core.length} of the 8 core columns and needs at least 5. Pick your column for these on the right, or add them to your file: ${missing.join(", ")}.`;
     $("score").disabled = true;
-  } else { m.className = "msg"; $("score").disabled = false; clearTimeout(autoT); autoT = setTimeout(() => { if (!$("viewUpload").hidden && current && current.rows === rows) $("score").click(); }, reduce ? 0 : 900); }
-  $("s1").className = "done"; $("s2").className = "on"; $("s3").className = "";
+  } else if (fresh && !guessed.length) {
+    m.className = "msg"; $("score").disabled = false;
+    autoT = setTimeout(() => { if (!$("viewUpload").hidden && current && current.rows === rows && !current.edited) $("score").click(); }, reduce ? 0 : 900);
+  } else {
+    m.className = "msg on info";
+    m.textContent = current.edited ? "Matches updated. Press Score my fans when you're happy."
+      : `FanIQ matched ${guessed.length} of your column${guessed.length > 1 ? "s" : ""} to its own names. Check the matches on the right, then press Score my fans.`;
+    $("score").disabled = false;
+  }
 }
 function countUp(el, to, d = 900, f = fmt) {
   if (reduce) { el.textContent = f(to); return; }
@@ -1594,7 +1654,7 @@ $("score").addEventListener("click", async () => {
   const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
   await wait(150); li[0].classList.add("on");
   await wait(350);
-  const result = FanIQ.run(current.headers, current.rows);
+  const result = FanIQ.run(current.headers, current.rows, current.map);
   li[1].classList.add("on"); await wait(380); li[2].classList.add("on"); await wait(380); li[3].classList.add("on"); await wait(380);
   ov.hidden = true; scoring = false;
   if (result.enough && result.outlook && window.THREE) Landing.start(result, current.name, () => showResults(result)); else showResults(result);
@@ -1630,7 +1690,10 @@ function showResults(R) {
   $("viewUpload").hidden = true; $("viewResults").hidden = false;
   $("s2").className = "done"; $("s3").className = "on"; scrollTo(0, 0);
   const D = R.D;
-  $("rmeta").innerHTML = `<b>${fmt(D.n)} fans</b> from ${esc(current.name)}<br>Mapped: ${Object.keys(D.mapping).map(esc).join(", ")}`;
+  const nCols = Object.keys(D.mapping).length, nAll = Object.keys(FanIQ.CORE_COLUMNS).length;
+  $("rmeta").innerHTML = `<b>${fmt(D.n)} fans</b> from ${esc(current.name)} <span class="sep">·</span> ${nCols} of ${nAll} columns used
+    <details class="mapd"><summary>See columns</summary><div class="chips">${Object.entries(D.mapping).map(([k, v]) =>
+      `<span class="chip">${esc(k)}${k !== v ? ` <i>← ${esc(v)}</i>` : ""}</span>`).join("")}</div></details>`;
   document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === "outlook"));
   renderOutlook(R);
 }
@@ -2116,7 +2179,7 @@ function startViz(D) {
   const host = $("viz"), canvas = $("vizc");
   if (!window.THREE) { host.hidden = true; return; }
   let renderer; try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { host.hidden = true; return; }
-  const S = D.s, n = D.n, MAX = 6000, per = Math.max(1, Math.ceil(n / MAX));
+  const S = D.s, n = D.n, MAX = 900, per = Math.max(1, Math.ceil(n / MAX)); // ~900 dots keeps the stand readable at any file size
   // order fans by FCRS (highest first) and sample evenly so band proportions hold
   const order = S.FCRS.map((f, i) => i).sort((a, b) => S.FCRS[b] - S.FCRS[a]);
   const pick = []; for (let k = 0; k < order.length; k += per) pick.push(order[k]);
