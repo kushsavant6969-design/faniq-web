@@ -388,6 +388,13 @@ details.drv[open] summary::before{content:"\2212"}
 #landing #L_tag{margin:.5em 0 0;font-size:clamp(.95rem,2vw,1.2rem);font-weight:650;min-height:1.4em}
 #landing #L_tag.loss{color:var(--loss)}
 #landing #L_tag.win{color:var(--lime)}
+#landing #L_chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:14px auto 0;max-width:640px;min-height:30px}
+#landing .lchip{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:.84rem;font-weight:650;color:var(--ink);opacity:0;transform:translateY(6px);transition:opacity .35s,transform .35s}
+#landing .lchip.in{opacity:1;transform:none}
+#landing .lchip i{width:9px;height:9px;border-radius:50%;flex:none}
+#landing .lchip b{font-variant-numeric:tabular-nums}
+#landing .lchip.sum{background:var(--ink);color:#fff;border-color:var(--ink)}
+@media (max-width:640px){#landing .lchip{font-size:.76rem;padding:4px 10px}}
 #landing .panel{
   position:absolute;z-index:4;border-radius:18px;padding:18px 20px;
   background:var(--panel);border:1px solid var(--panel-line);
@@ -493,6 +500,7 @@ body.intro{overflow:hidden}
       </svg>
     </div>
     <p id="L_tag"></p>
+    <div id="L_chips" aria-hidden="true"></div>
   </section>
 
   <div class="panel side" id="L_weights" aria-hidden="true">
@@ -680,16 +688,30 @@ const FanIQ = (() => {
     }
     return r;
   }
-  function parseDate(v) {
+  const SLASH_DATE = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/;
+  // Decide day-first vs month-first once for the whole column. UK club exports
+  // are day-first, so that is the default when every date is ambiguous
+  // (03/04/2026 = 3 April). Only a column with a second number above 12
+  // (04/23/2026) is read as US month-first.
+  function dateOrder(values) {
+    let dmy = false, mdy = false;
+    for (const v of values) {
+      if (isNA(v)) continue; const m = String(v).trim().match(SLASH_DATE); if (!m) continue;
+      if (+m[1] > 12) dmy = true; else if (+m[2] > 12) mdy = true;
+      if (dmy) break;
+    }
+    return mdy && !dmy ? "mdy" : "dmy";
+  }
+  function parseDate(v, order = "dmy") {
     if (isNA(v)) return NaN;
     const s = String(v).trim();
     let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
-    m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
-    if (m) { let a = +m[1], b = +m[2]; const dayFirst = a > 12; return dayFirst ? Date.UTC(+m[3], b - 1, a) : Date.UTC(+m[3], a - 1, b); }
+    m = s.match(SLASH_DATE);
+    if (m) { const a = +m[1], b = +m[2]; return order === "mdy" ? Date.UTC(+m[3], a - 1, b) : Date.UTC(+m[3], b - 1, a); }
     const t = Date.parse(s); return isNaN(t) ? NaN : t;
   }
-  const daysSince = v => { const t = parseDate(v); return isNaN(t) ? NaN : Math.floor((TODAY - t) / 864e5); };
+  const daysSince = (v, order) => { const t = parseDate(v, order); return isNaN(t) ? NaN : Math.floor((TODAY - t) / 864e5); };
 
   /* ---------- column mapping (rapidfuzz fuzz.ratio >= 75) ---------- */
   function lcs(a, b) {
@@ -728,11 +750,42 @@ const FanIQ = (() => {
   }
 
   /* ---------- compute_scores ---------- */
-  const MEMBERSHIP_RANK = { none: 0, bronze: 1, associate: 1, silver: 2, "full member": 2, gold: 3, "life member": 3, platinum: 4, "surrey & england": 4, vip: 4, premium: 3 };
+  // One tier ladder (0 none, 1 entry, 2 paid, 3 premium, 4 top) shared by the
+  // segment scores AND FCRS, so a Season Ticket holder is top tier everywhere.
+  // Matched by phrase, most specific first, so club-specific names still land.
+  const TIER_RULES = [
+    [0, ["no membership", "non member", "non-member", "not a member", "lapsed", "expired", "none"]],
+    [4, ["season ticket", "platinum", "vip", "hospitality", "life member", "lifetime", "box holder", "surrey & england"]],
+    [3, ["gold", "premium"]],
+    // Entry tiers before the generic "member", so "Junior Member" is entry level.
+    [1, ["bronze", "associate", "junior", "youth", "free", "registered", "supporter id", "spurs id", "club id"]],
+    [2, ["silver", "full member", "paid membership", "adult member", "membership", "member"]],
+  ];
+  const tierCache = new Map();
+  function tierLevel(v) {
+    if (isNA(v)) return 0;
+    const t = String(v).toLowerCase().trim(); if (!t || t === "no" || t === "n") return 0;
+    if (tierCache.has(t)) return tierCache.get(t);
+    let lvl = 0;
+    outer: for (const [l, words] of TIER_RULES) for (const w of words) {
+      if (new RegExp("(^|[^a-z])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z]|$)").test(t)) { lvl = l; break outer; }
+    }
+    tierCache.set(t, lvl); return lvl;
+  }
   function computeScores(D) {
     const n = D.n, has = c => c in D.cols, num = (c, fill) => D.cols[c].map(v => { const x = toNum(v); return isNaN(x) ? fill : x; });
-    const memRank = () => D.cols.Membership_Type.map(v => isNA(v) ? 0 : (MEMBERSHIP_RANK[String(v).toLowerCase().trim()] ?? 0));
-    const days730 = () => D.cols.Last_Attended.map(v => { const d = daysSince(v); return isNaN(d) ? 730 : d; });
+    const memRank = () => D.cols.Membership_Type.map(tierLevel);
+    // Days since last attended. A blank date is unknown, not "two years ago":
+    // it takes the file's median so missing data never pushes a fan to Dormant.
+    if (has("Last_Attended")) {
+      const order = dateOrder(D.cols.Last_Attended);
+      const raw = D.cols.Last_Attended.map(v => daysSince(v, order));
+      const known = raw.filter(d => !isNaN(d)).sort((a, b) => a - b);
+      const med = known.length ? known[Math.floor(known.length / 2)] : 365;
+      D.dateOrder = order; D.missingDates = raw.length - known.length;
+      D.days = raw.map(d => isNaN(d) ? med : d);
+    }
+    const days730 = () => D.days;
     const pct100 = a => rankPct(a).map(x => x * 100);
     const S = {}; D.s = S;
 
@@ -788,7 +841,7 @@ const FanIQ = (() => {
     const eng = num("Engagement_Score", 50), tickets = num("Tickets_Purchased", 0), spend = num("Spend", 0);
     const membership = has("Membership_Type") ? D.cols.Membership_Type.map(str) : new Array(n).fill("None");
     const chValid = has("Channel_Preference") ? D.cols.Channel_Preference.map(v => !isNA(v) && !["", "unknown", "nan", "none"].includes(String(v).trim().toLowerCase())) : new Array(n).fill(false);
-    const days = has("Last_Attended") ? D.cols.Last_Attended.map(daysSince) : new Array(n).fill(NaN);
+    const days = D.days || new Array(n).fill(NaN);
     const engAvg = mean(eng);
     S.FAQI_Trend = eng.map((e, i) => {
       let t = clip(50 + (e - engAvg), 0, 100); const above = e > engAvg;
@@ -806,10 +859,6 @@ const FanIQ = (() => {
   }
 
   /* ---------- compute_fcrs ---------- */
-  const ENTRY = ["spurs id", "bronze", "associate", "full member"];
-  const PAID66 = ["paid membership", "silver", "full member"];
-  const PAID100 = ["season ticket", "gold", "premium", "platinum", "vip", "life member"];
-  const IS_PAID = ["paid membership", "silver", "full member", "season ticket", "gold", "premium", "platinum", "vip", "life member"];
   function computeFCRS(D) {
     const n = D.n, S = D.s, lowerMap = {}; D.headers.forEach(h => { lowerMap[h.toLowerCase()] = h; });
     const find = (...names) => { for (const nm of names) if (nm.toLowerCase() in lowerMap) return lowerMap[nm.toLowerCase()]; return null; };
@@ -847,7 +896,7 @@ const FanIQ = (() => {
     if (ok1) { const tw = fsum(w); S.FCRS_Act = new Array(n).fill(0).map((_, i) => npRound(clip(parts.reduce((s, p, k) => s + p[i] * (w[k] / tw), 0), 0, 100), 1)); }
 
     // 2. Loyalty Depth
-    const tierScore = v => { const s = str(v).trim().toLowerCase(); let o = 0; if (ENTRY.includes(s)) o = 33; if (PAID66.includes(s)) o = 66; if (PAID100.includes(s)) o = 100; return o; };
+    const tierScore = v => ({ 0: 0, 1: 33, 2: 66, 3: 100, 4: 100 })[tierLevel(v)];
     const lp = [];
     if (c.mem) lp.push(D.cols[c.mem].map(tierScore));
     let breadth = null;
@@ -878,7 +927,8 @@ const FanIQ = (() => {
     const ok4 = !!c.mem;
     if (ok4) {
       const tier = D.cols[c.mem].map(v => str(v).trim().toLowerCase());
-      const isPaid = tier.map(t => IS_PAID.includes(t)), isEntry = tier.map(t => ENTRY.includes(t)), isNone = tier.map((t, i) => !(isPaid[i] || isEntry[i]));
+      const lv = D.cols[c.mem].map(tierLevel);
+      const isPaid = lv.map(l => l >= 2), isEntry = lv.map(l => l === 1), isNone = lv.map(l => l === 0);
       let v1, v2;
       if (c.eopen && c.art) { v1 = eopen; v2 = art; }
       else { v1 = eng || new Array(n).fill(50); v2 = tik || new Array(n).fill(0); }
@@ -1224,7 +1274,7 @@ const FanIQ = (() => {
   }
 
   const setToday = t => { TODAY = t; }, setLegacyNone = on => { if (on) NA.add("None"); else NA.delete("None"); };
-  return { setToday, setLegacyNone, CORE_COLUMNS, COLUMN_ALIASES, mapColumns, run, band, attention, npRound, pyRound, isNA };
+  return { setToday, setLegacyNone, CORE_COLUMNS, COLUMN_ALIASES, mapColumns, run, band, tierLevel, dateOrder, parseDate, attention, npRound, pyRound, isNA };
 })();
 
 
@@ -1691,7 +1741,8 @@ function showResults(R) {
   $("s2").className = "done"; $("s3").className = "on"; scrollTo(0, 0);
   const D = R.D;
   const nCols = Object.keys(D.mapping).length, nAll = Object.keys(FanIQ.CORE_COLUMNS).length;
-  $("rmeta").innerHTML = `<b>${fmt(D.n)} fans</b> from ${esc(current.name)} <span class="sep">·</span> ${nCols} of ${nAll} columns used
+  const gap = D.missingDates ? ` <span class="sep">·</span> <span title="Scored on their other data, using the typical attendance date for this file">${fmt(D.missingDates)} with no attendance date</span>` : "";
+  $("rmeta").innerHTML = `<b>${fmt(D.n)} fans</b> from ${esc(current.name)} <span class="sep">·</span> ${nCols} of ${nAll} columns used${gap}
     <details class="mapd"><summary>See columns</summary><div class="chips">${Object.entries(D.mapping).map(([k, v]) =>
       `<span class="chip">${esc(k)}${k !== v ? ` <i>← ${esc(v)}</i>` : ""}</span>`).join("")}</div></details>`;
   document.querySelectorAll(".tab[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === "outlook"));
@@ -2283,10 +2334,7 @@ function readColors() {
   const s = getComputedStyle(document.documentElement), g = v => s.getPropertyValue(v).trim();
   if (!glOK) return;
   C = { ink: new THREE.Color(g("--ink")), ghost: new THREE.Color(g("--ghost")), lime: new THREE.Color(g("--lime")) };
-  if (pos) for (let i = 0; i < N; i++) {
-    const key = grp[i] >= 100 ? "lime" : gone[i] ? "ghost" : "ink";
-    setC(colT, i, C[key]); setC(col, i, C[key]);
-  }
+  segC = CFG.steps.map(s => new THREE.Color(s.hex));
 }
 const setC = (a, i, c) => { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; };
 const visH = () => 2 * Math.tan(FOV / 2 * Math.PI / 180) * CAMZ;
@@ -2323,7 +2371,7 @@ function initGL() {
   });
   scene.add(new THREE.Points(geo, mat));
   // sphere directions for finale
-  const nr = N - CFG.steps.reduce((s, x) => s + Math.round(x.n / CFG.per), 0);
+  const nr = N;
   sph = [];
   for (let i = 0; i < nr; i++) { const y = 1 - (i + .5) / nr * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963; sph.push([Math.cos(th) * r, y, Math.sin(th) * r]); }
 }
@@ -2348,7 +2396,7 @@ function setPointSize(k) { mat.uniforms.uSize.value = Math.min(spacing, 1.5) * .
 
 let sphereR = 10, sphereC = new THREE.Vector3(), spin = 0;
 function sphereLayout() {
-  const top = tagEl.getBoundingClientRect().bottom + 18;
+  const top = (document.getElementById("L_chips") || tagEl).getBoundingClientRect().bottom + 18;
   const bottom = ctaEl.getBoundingClientRect().top - 44;
   const rpx = Math.max(40, Math.min((bottom - top) / 2, W * .26, 190));
   sphereR = rpx / H * visH();
@@ -2368,7 +2416,8 @@ function setTag(t, cls) { tagEl.textContent = t; tagEl.className = cls || ""; }
 function resetPoints() {
   const g = [];
   CFG.steps.forEach((s, i) => { for (let k = 0; k < Math.round(s.n / CFG.per); k++) g.push(i + 1); });
-  while (g.length < N) g.push(0);
+  while (g.length < N) g.push(CFG.steps.length || 1);
+  g.length = N;
   for (let i = g.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [g[i], g[j]] = [g[j], g[i]]; }
   for (let i = 0; i < N; i++) {
     grp[i] = g[i]; gone[i] = 0;
@@ -2385,14 +2434,30 @@ function burst() {
     t0[i] = now + Math.hypot(stand[i * 3], stand[i * 3 + 2]) * 9 + Math.random() * 300;
   }
 }
-function knockOut(g) {
-  const now = performance.now();
-  for (let i = 0; i < N; i++) if (grp[i] === g) {
-    gone[i] = 1; setC(colT, i, C.ghost);
-    t0[i] = now + 700 + Math.random() * 1000; kk[i] = 1.3;
-    tgt[i * 3] += (Math.random() - .5) * 20; tgt[i * 3 + 1] -= 45 + Math.random() * 25; tgt[i * 3 + 2] += 25 + Math.random() * 30;
-    alpT[i] = 0;
+// Lights one segment in its colour, in place. Earlier segments stay coloured
+// but settle back a little, so the new group pops. Nobody ever leaves the stand.
+const LIT_ALPHA = 0.6;
+let segC = [];
+function lightGroup(g) {
+  for (let i = 0; i < N; i++) {
+    if (grp[i] === g) { gone[i] = 1; setC(colT, i, segC[g - 1]); alpT[i] = 1; }
+    else if (gone[i]) alpT[i] = LIT_ALPHA;
   }
+}
+function gatherAll(instant) {
+  sphereLayout(); const now = performance.now(); let k = 0;
+  for (let i = 0; i < N; i++) {
+    const c = segC[grp[i] - 1] || C.ink;
+    grp[i] = 100 + grp[i]; stand[i * 3] = k++;
+    setC(colT, i, c); if (instant) setC(col, i, c); alpT[i] = 1;
+    t0[i] = instant ? 0 : now + Math.random() * 700; kk[i] = instant ? 99 : 2.4;
+  }
+}
+function addChip(s, sum) {
+  const box = document.getElementById("L_chips"); if (!box) return;
+  const el = document.createElement("span"); el.className = "lchip" + (sum ? " sum" : "");
+  el.innerHTML = sum ? `<b>${fmt(CFG.total)}</b> fans, all scored` : `<i style="background:${s.hex}"></i>${s.seg} <b>${fmt(s.n)}</b>`;
+  box.appendChild(el); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("in")));
 }
 function gather(instant) {
   sphereLayout(); const now = performance.now(); let k = 0;
@@ -2419,7 +2484,8 @@ function reset() {
   timers.forEach(clearTimeout); timers = []; tw = null; phase = "intro"; spin = 0;
   copyEl.classList.remove("on"); ringEl.classList.remove("on"); ctaEl.classList.remove("on");
   crm.classList.remove("on", "out"); sides.forEach(s => s.classList.remove("on"));
-  crmNum.textContent = "0"; numEl.textContent = fmt(CFG.total); setTag(""); skipBtn.hidden = false;
+  crmNum.textContent = "0"; numEl.textContent = fmt(CFG.total); setTag(""); tagEl.style.color = ""; skipBtn.hidden = false;
+  const chipBox = document.getElementById("L_chips"); if (chipBox) chipBox.innerHTML = "";
   leadEl.classList.remove("in"); leadEl.firstElementChild.textContent = "";
   if (glOK) { buildStand(); resetPoints(); }
 }
@@ -2430,38 +2496,40 @@ function run() {
   at(80, () => crm.classList.add("on"));
   at(500, () => tween(crmNum, 0, CFG.total, 1600));
   at(2600, () => { crm.classList.add("out"); burst(); });
-  at(3000, () => { copyEl.classList.add("on"); setLead("Your CRM says you have"); numEl.textContent = fmt(CFG.total); setTag("fans on the books."); });
-  let remaining = CFG.total;
+  at(3000, () => { copyEl.classList.add("on"); setLead("FanIQ scored every fan in your CRM."); numEl.textContent = fmt(CFG.total); setTag("fans scored, one by one.", ""); });
+  let shown = CFG.total; const STEP = 2300, T0 = 5000;
   CFG.steps.forEach((s, i) => {
-    const t = 5000 + i * 3400; const from = remaining; remaining -= s.n; const to = remaining;
-    at(t, () => { setLead(s.line); setTag(""); });
-    at(t + 500, () => { knockOut(i + 1); setTag(s.tag + "  \u2212" + fmt(s.n), "loss"); });
-    at(t + 1200, () => tween(numEl, from, to, 1300));
+    const t = T0 + i * STEP, from = shown; shown = s.n;
+    at(t, () => { setLead(s.line); setTag(""); tween(numEl, from, s.n, 700); });
+    at(t + 350, () => { lightGroup(i + 1); setTag(s.tag, "seg"); tagEl.style.color = s.hex; addChip(s); });
   });
-  at(15300, () => {
-    phase = "final"; setLead("These are the fans ready to buy.");
-    setTag("Conversion Ready, FCRS 70+", "win");
-    gather(false); assignSphereIdx(); setPointSize(1.15);
+  const F = T0 + CFG.steps.length * STEP + 300;
+  at(F, () => {
+    phase = "final"; setLead("Five segments. Every fan has a plan.");
+    tween(numEl, shown, CFG.total, 900); tagEl.style.color = "";
+    setTag(CFG.upside, "win"); addChip(null, true);
+    gatherAll(false); assignSphereIdx(); setPointSize(1.15);
   });
-  at(15900, () => ringEl.classList.add("on"));
-  at(16300, () => sides.forEach(s => s.classList.add("on")));
-  at(17600, () => { ctaEl.classList.add("on"); skipBtn.hidden = true; $("L_results").classList.add("auto"); });
-  for (let k = 0; k < 5; k++) at(17600 + k * 1000, () => { $("L_count").textContent = `Opening your full results in ${5 - k}`; });
-  at(17600 + 5000, () => { if (alive) finish(); });
-  at(END, () => { running = false; });
+  at(F + 600, () => ringEl.classList.add("on"));
+  at(F + 1000, () => sides.forEach(s => s.classList.add("on")));
+  at(F + 2300, () => { ctaEl.classList.add("on"); skipBtn.hidden = true; $("L_results").classList.add("auto"); });
+  for (let k = 0; k < 5; k++) at(F + 2300 + k * 1000, () => { $("L_count").textContent = `Opening your full results in ${5 - k}`; });
+  at(F + 2300 + 5000, () => { if (alive) finish(); });
+  at(F + 2300 + 5000, () => { running = false; });
 }
 
 function skip() {
   timers.forEach(clearTimeout); timers = []; running = false; tw = null; phase = "final";
   crm.classList.remove("on"); crm.classList.add("out");
-  copyEl.classList.add("on"); leadEl.firstElementChild.textContent = "These are the fans ready to buy."; leadEl.classList.add("in");
-  numEl.textContent = fmt(ready); setTag("Conversion Ready, FCRS 70+", "win");
+  copyEl.classList.add("on"); leadEl.firstElementChild.textContent = "Five segments. Every fan has a plan."; leadEl.classList.add("in");
+  numEl.textContent = fmt(CFG.total); tagEl.style.color = ""; setTag(CFG.upside, "win");
+  const box = document.getElementById("L_chips"); if (box) { box.innerHTML = ""; CFG.steps.forEach(s => addChip(s)); addChip(null, true); }
   ringEl.classList.add("on"); ctaEl.classList.add("on"); sides.forEach(s => s.classList.add("on"));
   skipBtn.hidden = true; barEl.style.width = "100%";
   if (glOK) {
-    for (let i = 0; i < N; i++) if (grp[i] > 0 && grp[i] < 100) { gone[i] = 1; alp[i] = alpT[i] = 0; }
-    gather(true); assignSphereIdx(); setPointSize(1.15); sphereTargets(0);
-    for (let i = 0; i < N; i++) if (grp[i] >= 100) { pos[i * 3] = tgt[i * 3]; pos[i * 3 + 1] = tgt[i * 3 + 1]; pos[i * 3 + 2] = tgt[i * 3 + 2]; alp[i] = 1; setC(col, i, C.lime); }
+    if (!(grp[0] >= 100)) gatherAll(true);
+    assignSphereIdx(); setPointSize(1.15); sphereTargets(0);
+    for (let i = 0; i < N; i++) { pos[i * 3] = tgt[i * 3]; pos[i * 3 + 1] = tgt[i * 3 + 1]; pos[i * 3 + 2] = tgt[i * 3 + 2]; alp[i] = 1; }
   }
 }
 
@@ -2506,18 +2574,28 @@ function resize() {
   renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
   camera.aspect = W / H; camera.updateProjectionMatrix();
   const keep = new Float32Array(stand); buildStand();
-  if (phase === "final") { for (let i = 0; i < N; i++) if (grp[i] >= 100) stand[i * 3] = keep[i * 3]; sphereLayout(); setPointSize(1.15); }
-  else for (let i = 0; i < N; i++) if (!gone[i]) { tgt[i * 3] = stand[i * 3]; tgt[i * 3 + 1] = stand[i * 3 + 1]; tgt[i * 3 + 2] = stand[i * 3 + 2]; }
+  if (phase === "final") {
+    for (let i = 0; i < N; i++) if (grp[i] >= 100) stand[i * 3] = keep[i * 3];
+    sphereLayout(); setPointSize(1.15);
+  }
+  else for (let i = 0; i < N; i++) if (grp[i] < 100) { tgt[i * 3] = stand[i * 3]; tgt[i * 3 + 1] = stand[i * 3 + 1]; tgt[i * 3 + 2] = stand[i * 3 + 2]; }
 }
 
 
 function configure(R, name) {
-  const b = R.outlook.fcrs.bands, O = R.outlook;
+  const O = R.outlook, cnt = {};
+  R.D.s.Segment.forEach(sg => { cnt[sg] = (cnt[sg] || 0) + 1; });
+  // FanIQ's five segments, introduced one at a time. No segment is "better":
+  // each is an opportunity with its own play, and together they add up to every fan.
   CFG = { total: R.D.n, per: Math.max(1, Math.ceil(R.D.n / 4000)), steps: [
-    { n: b.Passive, line: "Some barely engage with anything the club sends.", tag: "Passive, FCRS under 40" },
-    { n: b.Building, line: "Some are warming up, but aren't ready yet.", tag: "Building, FCRS 40 to 69" }
-  ].filter(s => s.n > 0) };
-  ready = b["Conversion Ready"];
+    { seg: "VIP", line: "Some are already your most valuable fans.", tag: "VIP. Keep them close and reward them." },
+    { seg: "High Potential", line: "Some are engaged but haven't committed yet.", tag: "High Potential. Ready to become members." },
+    { seg: "Regular", line: "Some come along steadily.", tag: "Regular. Room to grow how often they come." },
+    { seg: "Win Back", line: "Some have started to drift.", tag: "Win Back. Catch them before they go quiet." },
+    { seg: "Dormant", line: "Some have gone quiet.", tag: "Dormant. One well-timed offer could bring them back." }
+  ].map(s => ({ ...s, n: cnt[s.seg] || 0, hex: SEG_HEX[s.seg] })).filter(s => s.n > 0) };
+  ready = R.D.n;
+  CFG.upside = `+£${FanIQ.pyRound(O.combined).toLocaleString("en-GB")} upside across ${O.priority.length} priority opportunit${O.priority.length === 1 ? "y" : "ies"}.`;
   N = Math.round(CFG.total / CFG.per); sphIdx = new Int32Array(N);
   $("L_fields").textContent = R.D.headers.length;
   $("L_matched").textContent = Object.keys(R.D.mapping).length + "/11";
